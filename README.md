@@ -7,7 +7,7 @@ Detect how many click 'Fight' for Pockie Ninja - Tailed Beast Event
 pip install opencv-python mss numpy pynput
 
 
-📁 Struktur Folder
+📁 Structure folder
 
 fight_counter/
 
