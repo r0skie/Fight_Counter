@@ -1,63 +1,83 @@
 import cv2
 import numpy as np
-import mss
 import time
 from pynput import mouse
+import tkinter as tk
+import threading
+import mss
 
-# ================= CONFIG =================
+# ============ CONFIG ============
 TEMPLATE_PATH = "fight.png"
-THRESHOLD = 0.85          # tingkat kecocokan
-SCAN_DELAY = 0.3          # detik
-MONITOR_INDEX = 1         # layar utama
-# =========================================
+THRESHOLD = 0.85
+SCAN_DELAY = 0.4
+MONITOR_INDEX = 1
+# ================================
 
-# Load template
 template = cv2.imread(TEMPLATE_PATH, cv2.IMREAD_GRAYSCALE)
 if template is None:
     raise FileNotFoundError("fight.png tidak ditemukan")
 
 w, h = template.shape[::-1]
 
-sct = mss.mss()
-monitor = sct.monitors[MONITOR_INDEX]
-
 fight_box = None
-fight_click_count = 0
+fight_count = 0
+status_text = "WAITING"
 
-print("[INFO] Fight Click Counter started")
-print("[INFO] Tekan CTRL+C untuk keluar\n")
+# ============ GUI ============
+root = tk.Tk()
+root.title("Fight Counter")
+root.geometry("220x120")
+root.attributes("-topmost", True)
+root.resizable(False, False)
 
+lbl_title = tk.Label(root, text="Fight Counter", font=("Arial", 12, "bold"))
+lbl_title.pack(pady=5)
+
+lbl_count = tk.Label(root, text="Fight: 0x", font=("Arial", 14))
+lbl_count.pack()
+
+lbl_status = tk.Label(root, text="Status: WAITING", font=("Arial", 9))
+lbl_status.pack(pady=5)
+
+def update_gui():
+    lbl_count.config(text=f"Fight: {fight_count}x")
+    lbl_status.config(text=f"Status: {status_text}")
+    root.after(300, update_gui)
+
+# ============ MOUSE ============
 def on_click(x, y, button, pressed):
-    global fight_click_count, fight_box
-
+    global fight_count
     if pressed and fight_box:
         fx, fy, fw, fh = fight_box
         if fx <= x <= fx + fw and fy <= y <= fy + fh:
-            fight_click_count += 1
-            print(f"[COUNT] Fight clicked: {fight_click_count}x")
+            fight_count += 1
 
-# Start mouse listener
-listener = mouse.Listener(on_click=on_click)
-listener.start()
+mouse.Listener(on_click=on_click).start()
 
-try:
+# ============ DETECTION LOOP ============
+def detection_loop():
+    global fight_box, status_text
+
+    sct = mss.mss()  # ✅ penting: buat di thread
+    monitor = sct.monitors[MONITOR_INDEX]
+
     while True:
-        # Capture screen
         screen = np.array(sct.grab(monitor))
         gray = cv2.cvtColor(screen, cv2.COLOR_BGR2GRAY)
 
-        # Template matching
         result = cv2.matchTemplate(gray, template, cv2.TM_CCOEFF_NORMED)
         _, max_val, _, max_loc = cv2.minMaxLoc(result)
 
         if max_val >= THRESHOLD:
-            x, y = max_loc
-            fight_box = (x, y, w, h)
+            fight_box = (*max_loc, w, h)
+            status_text = "READY"
         else:
             fight_box = None
+            status_text = "WAITING"
 
         time.sleep(SCAN_DELAY)
 
-except KeyboardInterrupt:
-    print("\n[EXIT] Program dihentikan")
-    print(f"[RESULT] Total Fight click: {fight_click_count}x")
+threading.Thread(target=detection_loop, daemon=True).start()
+
+update_gui()
+root.mainloop()
